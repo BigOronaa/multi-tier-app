@@ -14,6 +14,18 @@ jobs:
       - name: Checkout repository
         uses: actions/checkout@v4
 
+      # ✅ REQUIRED: Install Terraform
+      - name: Set up Terraform
+        uses: hashicorp/setup-terraform@v3
+
+      # ✅ Initialize Terraform
+      - name: Terraform Init
+        run: terraform -chdir=environments/dev init
+
+      # ⚠️ OPTIONAL (comment out if infra already exists)
+      # - name: Terraform Apply
+      #   run: terraform -chdir=environments/dev apply -auto-approve
+
       - name: Install Ansible
         run: |
           sudo apt update
@@ -33,7 +45,7 @@ jobs:
       - name: Generate Ansible Inventory from Terraform outputs
         run: |
           terraform -chdir=environments/dev output -json > outputs.json
-          python3 scripts/generate_inventory.py
+          python3 ansible/scripts/generate_inventory.py outputs.json
 
       - name: Run MySQL Playbook
         run: ansible-playbook -i ansible/playbooks/hosts.ini ansible/playbooks/mysql-docker.yml
