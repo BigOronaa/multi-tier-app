@@ -1,4 +1,4 @@
-name: Multi-Tier Deployment Pipeline
+name: Ansible Configuration Pipeline
 
 on:
   push:
@@ -7,61 +7,51 @@ on:
   workflow_dispatch:
 
 jobs:
-  deploy:
+  ansible:
     runs-on: ubuntu-latest
 
     steps:
-      # 1️⃣ Checkout the repository
       - name: Checkout repository
         uses: actions/checkout@v4
 
-      # 2️⃣ Configure AWS credentials
-      - name: Configure AWS credentials
-        uses: aws-actions/configure-aws-credentials@v2
-        with:
-          aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
-          aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
-          aws-region: us-east-1   # replace with your AWS region
-
-      # 3️⃣ Install Terraform
-      - name: Install Terraform
-        uses: hashicorp/setup-terraform@v2
-        with:
-          terraform_version: 1.6.0
-
-      # 4️⃣ Terraform Init & Apply (provision infrastructure)
-      - name: Terraform Init & Apply
-        run: |
-          terraform -chdir=environments/dev init
-          terraform -chdir=environments/dev apply -auto-approve
-          terraform -chdir=environments/dev output -json > outputs.json
-
-      # 5️⃣ Install Ansible and Python dependencies
-      - name: Install Ansible and dependencies
+      - name: Install dependencies
         run: |
           sudo apt update
           sudo apt install -y ansible python3-pip
           pip3 install docker pymysql
 
-      # 6️⃣ Generate dynamic inventory (optional)
-      # Replace this with your generate_inventory.py if exists
-      - name: Generate Ansible Inventory
+      - name: Configure SSH
         run: |
-          cp ansible/playbooks/hosts.ini ansible/playbooks/inventory.ini
-          # or run python3 ansible/scripts/generate_inventory.py
+          mkdir -p ~/.ssh
+          echo "${{ secrets.SSH_PRIVATE_KEY }}" > ~/.ssh/id_rsa
+          chmod 600 ~/.ssh/id_rsa
+          ssh-keyscan -H github.com >> ~/.ssh/known_hosts
 
-      # 7️⃣ Run MySQL Playbook
+      - name: Generate Ansible inventory
+        run: |
+          cat > ansible/playbooks/hosts.ini <<EOL
+          [db]
+          100.28.230.137 ansible_user=ubuntu ansible_ssh_private_key_file=~/.ssh/id_rsa
+
+          [web_servers]
+          54.152.48.179 ansible_user=ubuntu ansible_ssh_private_key_file=~/.ssh/id_rsa
+          18.206.126.226 ansible_user=ubuntu ansible_ssh_private_key_file=~/.ssh/id_rsa
+
+          [nodejs_todo]
+          3.87.21.67 ansible_user=ubuntu ansible_ssh_private_key_file=~/.ssh/id_rsa
+
+          [lb1]
+          18.206.22.78 ansible_user=ubuntu ansible_ssh_private_key_file=~/.ssh/id_rsa
+          EOL
+
       - name: Run MySQL Playbook
-        run: ansible-playbook -i ansible/playbooks/inventory.ini ansible/playbooks/mysql-docker.yml
+        run: ansible-playbook -i ansible/playbooks/hosts.ini ansible/playbooks/mysql-docker.yml
 
-      # 8️⃣ Run WordPress Playbook
       - name: Run WordPress Playbook
-        run: ansible-playbook -i ansible/playbooks/inventory.ini ansible/playbooks/wordpress.yml
+        run: ansible-playbook -i ansible/playbooks/hosts.ini ansible/playbooks/wordpress.yml
 
-      # 9️⃣ Run Node.js Todo Playbook
-      - name: Run Node.js Playbook
-        run: ansible-playbook -i ansible/playbooks/inventory.ini ansible/playbooks/nodejs.yml
+      - name: Run Node.js Todo Playbook
+        run: ansible-playbook -i ansible/playbooks/hosts.ini ansible/playbooks/nodejs.yml
 
-      # 🔟 Run Load Balancer Playbook
       - name: Run Load Balancer Playbook
-        run: ansible-playbook -i ansible/playbooks/inventory.ini ansible/playbooks/loadbalancer.yml
+        run: ansible-playbook -i ansible/playbooks/hosts.ini ansible/playbooks/loadbalancer.yml
