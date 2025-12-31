@@ -1,0 +1,54 @@
+---
+- name: Configure all servers
+  hosts: all
+  become: true
+  tasks:
+
+    - name: Update apt cache
+      apt:
+        update_cache: yes
+
+- name: Configure MySQL server
+  hosts: db
+  become: true
+  tasks:
+    - name: Install MySQL server
+      apt:
+        name: mysql-server
+        state: present
+        update_cache: yes
+
+- name: Configure NodeJS server
+  hosts: nodejs
+  become: true
+  tasks:
+    - name: Install NodeJS
+      apt:
+        name: nodejs
+        state: present
+        update_cache: yes
+    - name: Install npm
+      apt:
+        name: npm
+        state: present
+        update_cache: yes
+
+- name: Configure Web servers
+  hosts: web
+  become: true
+  tasks:
+    - name: Install Apache
+      apt:
+        name: apache2
+        state: present
+        update_cache: yes
+
+- name: Configure Load Balancer
+  hosts: load_balancer
+  become: true
+  tasks:
+    - name: Install HAProxy
+      apt:
+        name: haproxy
+        state: present
+        update_cache: yes

@@ -1,0 +1,52 @@
+---
+- name: Configure MySQL in Docker
+  hosts: db
+  become: yes
+  vars:
+    mysql_root_password: rootpassword
+    wordpress_db: wordpress
+    wordpress_user: wp_user
+    wordpress_password: wp_password
+    mysql_port: 3306
+
+  tasks:
+    - name: Install required packages
+      apt:
+        name: 
+          - docker.io
+          - python3-pip
+        state: present
+        update_cache: yes
+
+    - name: Install Docker Python module
+      pip:
+        name: docker
+        executable: pip3
+
+    - name: Ensure Docker service is running
+      service:
+        name: docker
+        state: started
+        enabled: yes
+
+    - name: Pull MySQL Docker image
+      docker_image:
+        name: mysql
+        tag: "8.0"
+        source: pull
+
+    - name: Run MySQL container
+      docker_container:
+        name: wordpress-mysql
+        image: mysql:8.0
+        state: started
+        restart_policy: always
+        env:
+          MYSQL_ROOT_PASSWORD: "{{ mysql_root_password }}"
+          MYSQL_DATABASE: "{{ wordpress_db }}"
+          MYSQL_USER: "{{ wordpress_user }}"
+          MYSQL_PASSWORD: "{{ wordpress_password }}"
+        ports:
+          - "{{ mysql_port }}:3306"
+        volumes:
+          - /var/lib/mysql:/var/lib/mysql

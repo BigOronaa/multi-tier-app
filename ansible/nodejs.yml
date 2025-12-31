@@ -1,0 +1,50 @@
+---
+- name: Configure Node.js Todo server
+  hosts: nodejs
+  become: yes
+
+  tasks:
+    - name: Install Node.js and npm
+      apt:
+        name: "{{ item }}"
+        state: present
+        update_cache: yes
+      loop:
+        - nodejs
+        - npm
+
+    - name: Create app directory
+      file:
+        path: /home/ubuntu/todo-app
+        state: directory
+        owner: ubuntu
+        group: ubuntu
+        mode: '0755'
+
+    - name: Create a simple Todo app file
+      copy:
+        dest: /home/ubuntu/todo-app/app.js
+        content: |
+          const http = require('http');
+          const port = 3000;
+          const server = http.createServer((req, res) => {
+              res.statusCode = 200;
+              res.setHeader('Content-Type', 'text/plain');
+              res.end('Hello! This is your Todo App.\n');
+          });
+          server.listen(port, () => {
+              console.log(`Server running at http://localhost:${port}/`);
+          });
+      owner: ubuntu
+      group: ubuntu
+      mode: '0755'
+
+    - name: Install dependencies (none for now)
+      npm:
+        path: /home/ubuntu/todo-app
+        state: present
+
+    - name: Start Node.js Todo app
+      shell: "nohup node /home/ubuntu/todo-app/app.js &"
+      args:
+        chdir: /home/ubuntu/todo-app
