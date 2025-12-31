@@ -1,4 +1,4 @@
-name: Ansible Configuration Pipeline
+name: Terraform + Ansible Multi-Tier Deployment
 
 on:
   workflow_dispatch:
