@@ -30,8 +30,7 @@ jobs:
 
       - name: Create Ansible inventory
         run: |
-          cat > ansible/playbooks/hosts.ini <<EOL
-[db]
+    echo "[db]
 100.28.230.137 ansible_user=ubuntu ansible_ssh_private_key_file=~/.ssh/id_rsa
 
 [web_servers]
@@ -42,8 +41,7 @@ jobs:
 3.87.21.67 ansible_user=ubuntu ansible_ssh_private_key_file=~/.ssh/id_rsa
 
 [lb]
-18.206.22.78 ansible_user=ubuntu ansible_ssh_private_key_file=~/.ssh/id_rsa
-EOL
+18.206.22.78 ansible_user=ubuntu ansible_ssh_private_key_file=~/.ssh/id_rsa" > ansible/playbooks/hosts.ini
 
       - name: Run MySQL Docker Playbook
         run: ansible-playbook -i ansible/playbooks/hosts.ini ansible/playbooks/mysql-docker.yml
