@@ -1,58 +1,67 @@
-name: Full Deployment Pipeline
+name: Multi-Tier Deployment Pipeline
 
 on:
-  workflow_dispatch:
   push:
     branches:
       - main
+  workflow_dispatch:
 
 jobs:
   deploy:
     runs-on: ubuntu-latest
 
     steps:
+      # 1️⃣ Checkout the repository
       - name: Checkout repository
         uses: actions/checkout@v4
 
-      - name: Setup Terraform
+      # 2️⃣ Configure AWS credentials
+      - name: Configure AWS credentials
+        uses: aws-actions/configure-aws-credentials@v2
+        with:
+          aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
+          aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+          aws-region: us-east-1   # replace with your AWS region
+
+      # 3️⃣ Install Terraform
+      - name: Install Terraform
         uses: hashicorp/setup-terraform@v2
         with:
-          terraform_version: 1.6.0  # or your preferred version
+          terraform_version: 1.6.0
 
-      - name: Terraform Init and Apply
+      # 4️⃣ Terraform Init & Apply (provision infrastructure)
+      - name: Terraform Init & Apply
         run: |
           terraform -chdir=environments/dev init
           terraform -chdir=environments/dev apply -auto-approve
+          terraform -chdir=environments/dev output -json > outputs.json
 
-      - name: Export Terraform outputs
-        run: terraform -chdir=environments/dev output -json > outputs.json
-
-      - name: Generate Ansible Inventory
-        run: |
-          mkdir -p ansible/playbooks
-          python3 ansible/scripts/generate_inventory.py outputs.json ansible/playbooks/hosts.ini
-
-      - name: Install Ansible
+      # 5️⃣ Install Ansible and Python dependencies
+      - name: Install Ansible and dependencies
         run: |
           sudo apt update
           sudo apt install -y ansible python3-pip
           pip3 install docker pymysql
 
-      - name: Configure SSH
+      # 6️⃣ Generate dynamic inventory (optional)
+      # Replace this with your generate_inventory.py if exists
+      - name: Generate Ansible Inventory
         run: |
-          mkdir -p ~/.ssh
-          echo "${{ secrets.SSH_PRIVATE_KEY }}" > ~/.ssh/id_rsa
-          chmod 600 ~/.ssh/id_rsa
-          ssh-keyscan -H github.com >> ~/.ssh/known_hosts
+          cp ansible/playbooks/hosts.ini ansible/playbooks/inventory.ini
+          # or run python3 ansible/scripts/generate_inventory.py
 
+      # 7️⃣ Run MySQL Playbook
       - name: Run MySQL Playbook
-        run: ansible-playbook -i ansible/playbooks/hosts.ini ansible/playbooks/mysql-docker.yml
+        run: ansible-playbook -i ansible/playbooks/inventory.ini ansible/playbooks/mysql-docker.yml
 
+      # 8️⃣ Run WordPress Playbook
       - name: Run WordPress Playbook
-        run: ansible-playbook -i ansible/playbooks/hosts.ini ansible/playbooks/wordpress.yml
+        run: ansible-playbook -i ansible/playbooks/inventory.ini ansible/playbooks/wordpress.yml
 
+      # 9️⃣ Run Node.js Todo Playbook
       - name: Run Node.js Playbook
-        run: ansible-playbook -i ansible/playbooks/hosts.ini ansible/playbooks/nodejs.yml
+        run: ansible-playbook -i ansible/playbooks/inventory.ini ansible/playbooks/nodejs.yml
 
+      # 🔟 Run Load Balancer Playbook
       - name: Run Load Balancer Playbook
-        run: ansible-playbook -i ansible/playbooks/hosts.ini ansible/playbooks/loadbalancer.yml
+        run: ansible-playbook -i ansible/playbooks/inventory.ini ansible/playbooks/loadbalancer.yml
