@@ -1,10 +1,10 @@
 name: Ansible Configuration Pipeline
 
 on:
+  workflow_dispatch:
   push:
     branches:
       - main
-  workflow_dispatch:
 
 jobs:
   ansible:
@@ -14,7 +14,7 @@ jobs:
       - name: Checkout repository
         uses: actions/checkout@v4
 
-      - name: Install dependencies
+      - name: Install Ansible and dependencies
         run: |
           sudo apt update
           sudo apt install -y ansible python3-pip
@@ -25,32 +25,33 @@ jobs:
           mkdir -p ~/.ssh
           echo "${{ secrets.SSH_PRIVATE_KEY }}" > ~/.ssh/id_rsa
           chmod 600 ~/.ssh/id_rsa
-          ssh-keyscan -H github.com >> ~/.ssh/known_hosts
+          # Disable strict host key checking
+          echo -e "Host *\n\tStrictHostKeyChecking no\n" >> ~/.ssh/config
 
-      - name: Generate Ansible inventory
+      - name: Create Ansible inventory
         run: |
           cat > ansible/playbooks/hosts.ini <<EOL
-          [db]
-          100.28.230.137 ansible_user=ubuntu ansible_ssh_private_key_file=~/.ssh/id_rsa
+[db]
+100.28.230.137 ansible_user=ubuntu ansible_ssh_private_key_file=~/.ssh/id_rsa
 
-          [web_servers]
-          54.152.48.179 ansible_user=ubuntu ansible_ssh_private_key_file=~/.ssh/id_rsa
-          18.206.126.226 ansible_user=ubuntu ansible_ssh_private_key_file=~/.ssh/id_rsa
+[web_servers]
+54.152.48.179 ansible_user=ubuntu ansible_ssh_private_key_file=~/.ssh/id_rsa
+18.206.126.226 ansible_user=ubuntu ansible_ssh_private_key_file=~/.ssh/id_rsa
 
-          [nodejs_todo]
-          3.87.21.67 ansible_user=ubuntu ansible_ssh_private_key_file=~/.ssh/id_rsa
+[nodejs_todo]
+3.87.21.67 ansible_user=ubuntu ansible_ssh_private_key_file=~/.ssh/id_rsa
 
-          [lb1]
-          18.206.22.78 ansible_user=ubuntu ansible_ssh_private_key_file=~/.ssh/id_rsa
-          EOL
+[lb]
+18.206.22.78 ansible_user=ubuntu ansible_ssh_private_key_file=~/.ssh/id_rsa
+EOL
 
-      - name: Run MySQL Playbook
+      - name: Run MySQL Docker Playbook
         run: ansible-playbook -i ansible/playbooks/hosts.ini ansible/playbooks/mysql-docker.yml
 
       - name: Run WordPress Playbook
         run: ansible-playbook -i ansible/playbooks/hosts.ini ansible/playbooks/wordpress.yml
 
-      - name: Run Node.js Todo Playbook
+      - name: Run Node.js Playbook
         run: ansible-playbook -i ansible/playbooks/hosts.ini ansible/playbooks/nodejs.yml
 
       - name: Run Load Balancer Playbook
