@@ -1,55 +1,104 @@
-name: Ansible Configuration Pipeline
+name: Terraform + Ansible Multi-Tier Deployment
 
 on:
-  workflow_dispatch:
   push:
-    branches:
-      - main
+    branches: [ main ]
+  workflow_dispatch:
 
 jobs:
-  ansible:
+  deploy:
     runs-on: ubuntu-latest
+    defaults:
+      run:
+        shell: bash
 
     steps:
-      - name: Checkout repository
-        uses: actions/checkout@v4
+    # -----------------------------
+    # 1. Checkout
+    # -----------------------------
+    - name: Checkout repository
+      uses: actions/checkout@v4
 
-      - name: Install Ansible and dependencies
-        run: |
-          sudo apt update
-          sudo apt install -y ansible python3-pip
-          pip3 install docker pymysql
+    # -----------------------------
+    # 2. Install dependencies
+    # -----------------------------
+    - name: Install Terraform, Ansible, jq
+      run: |
+        sudo apt update
+        sudo apt install -y ansible jq python3-pip
+        pip3 install pymysql docker
 
-      - name: Configure SSH
-        run: |
-          mkdir -p ~/.ssh
-          echo "${{ secrets.SSH_PRIVATE_KEY }}" > ~/.ssh/id_rsa
-          chmod 600 ~/.ssh/id_rsa
-          echo -e "Host *\n\tStrictHostKeyChecking no\n" >> ~/.ssh/config
+    # -----------------------------
+    # 3. Configure SSH
+    # -----------------------------
+    - name: Configure SSH
+      run: |
+        mkdir -p ~/.ssh
+        printf "%s\n" "${{ secrets.SSH_PRIVATE_KEY }}" > ~/.ssh/id_rsa
+        chmod 600 ~/.ssh/id_rsa
+        echo -e "Host *\n\tStrictHostKeyChecking no\n" > ~/.ssh/config
 
-      - name: Create Ansible inventory
-        run: |
-          echo "[db]" > ansible/playbooks/hosts.ini
-          echo "100.28.230.137 ansible_user=ubuntu ansible_ssh_private_key_file=~/.ssh/id_rsa" >> ansible/playbooks/hosts.ini
+    # -----------------------------
+    # 4. Terraform Init & Apply
+    # -----------------------------
+    - name: Terraform Init
+      working-directory: environments/dev
+      run: terraform init
 
-          echo "[web_servers]" >> ansible/playbooks/hosts.ini
-          echo "54.152.48.179 ansible_user=ubuntu ansible_ssh_private_key_file=~/.ssh/id_rsa" >> ansible/playbooks/hosts.ini
-          echo "18.206.126.226 ansible_user=ubuntu ansible_ssh_private_key_file=~/.ssh/id_rsa" >> ansible/playbooks/hosts.ini
+    - name: Terraform Apply
+      working-directory: environments/dev
+      run: terraform apply -auto-approve
 
-          echo "[nodejs_todo]" >> ansible/playbooks/hosts.ini
-          echo "3.87.21.67 ansible_user=ubuntu ansible_ssh_private_key_file=~/.ssh/id_rsa" >> ansible/playbooks/hosts.ini
+    # -----------------------------
+    # 5. Export Terraform Outputs
+    # -----------------------------
+    - name: Export Terraform Outputs
+      working-directory: environments/dev
+      run: terraform output -json > tf_outputs.json
 
-          echo "[lb]" >> ansible/playbooks/hosts.ini
-          echo "18.206.22.78 ansible_user=ubuntu ansible_ssh_private_key_file=~/.ssh/id_rsa" >> ansible/playbooks/hosts.ini
+    # -----------------------------
+    # 6. Generate Ansible Inventory
+    # -----------------------------
+    - name: Generate Ansible Inventory
+      run: |
+        mkdir -p ansible/inventory
 
-      - name: Run MySQL Docker Playbook
-        run: ansible-playbook -i ansible/playbooks/hosts.ini ansible/playbooks/mysql-docker.yml
+        jq -r '
+          "[mysql]\n" +
+          .mysql_ip.value + " ansible_user=ubuntu\n\n" +
 
-      - name: Run WordPress Playbook
-        run: ansible-playbook -i ansible/playbooks/hosts.ini ansible/playbooks/wordpress.yml
+          "[wordpress]\n" +
+          (.wordpress_ips.value | map(. + " ansible_user=ubuntu") | join("\n")) + "\n\n" +
 
-      - name: Run Node.js Playbook
-        run: ansible-playbook -i ansible/playbooks/hosts.ini ansible/playbooks/nodejs.yml
+          "[nodejs_todo]\n" +
+          .nodejs_ip.value + " ansible_user=ubuntu\n\n" +
 
-      - name: Run Load Balancer Playbook
-        run: ansible-playbook -i ansible/playbooks/hosts.ini ansible/playbooks/loadbalancer.yml
+          "[load_balancer]\n" +
+          .lb_ip.value + " ansible_user=ubuntu\n"
+        ' environments/dev/tf_outputs.json > ansible/inventory/hosts.ini
+
+    - name: Show Inventory (Debug)
+      run: cat ansible/inventory/hosts.ini
+
+    # -----------------------------
+    # 7. Run Ansible Playbooks
+    # -----------------------------
+    - name: Configure MySQL
+      run: |
+        ansible-playbook -i ansible/inventory/hosts.ini \
+          ansible/playbooks/mysql.yml
+
+    - name: Configure WordPress
+      run: |
+        ansible-playbook -i ansible/inventory/hosts.ini \
+          ansible/playbooks/wordpress.yml
+
+    - name: Configure Node.js Todo App
+      run: |
+        ansible-playbook -i ansible/inventory/hosts.ini \
+          ansible/playbooks/nodejs.yml
+
+    - name: Configure Load Balancer
+      run: |
+        ansible-playbook -i ansible/inventory/hosts.ini \
+          ansible/playbooks/loadbalancer.yml
