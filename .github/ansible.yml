@@ -1,0 +1,48 @@
+name: Ansible Configuration Pipeline
+
+on:
+  workflow_dispatch:
+  push:
+    branches:
+      - main
+
+jobs:
+  ansible:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Install Ansible
+        run: |
+          sudo apt update
+          sudo apt install -y ansible
+
+      - name: Install Python dependencies
+        run: |
+          pip3 install docker pymysql
+
+      - name: Configure SSH
+        run: |
+          mkdir -p ~/.ssh
+          echo "${{ secrets.SSH_PRIVATE_KEY }}" > ~/.ssh/id_rsa
+          chmod 600 ~/.ssh/id_rsa
+          ssh-keyscan -H github.com >> ~/.ssh/known_hosts
+
+      - name: Generate Ansible Inventory from Terraform outputs
+        run: |
+          terraform -chdir=environments/dev output -json > outputs.json
+          python3 scripts/generate_inventory.py
+
+      - name: Run MySQL Playbook
+        run: ansible-playbook -i ansible/playbooks/hosts.ini ansible/playbooks/mysql-docker.yml
+
+      - name: Run WordPress Playbook
+        run: ansible-playbook -i ansible/playbooks/hosts.ini ansible/playbooks/wordpress.yml
+
+      - name: Run Node.js Playbook
+        run: ansible-playbook -i ansible/playbooks/hosts.ini ansible/playbooks/nodejs.yml
+
+      - name: Run Load Balancer Playbook
+        run: ansible-playbook -i ansible/playbooks/hosts.ini ansible/playbooks/loadbalancer.yml
