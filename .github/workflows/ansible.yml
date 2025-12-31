@@ -1,4 +1,4 @@
-name: Ansible Configuration Pipeline
+name: Full Deployment Pipeline
 
 on:
   workflow_dispatch:
@@ -7,20 +7,35 @@ on:
       - main
 
 jobs:
-  ansible:
+  deploy:
     runs-on: ubuntu-latest
 
     steps:
       - name: Checkout repository
         uses: actions/checkout@v4
 
+      - name: Setup Terraform
+        uses: hashicorp/setup-terraform@v2
+        with:
+          terraform_version: 1.6.0  # or your preferred version
+
+      - name: Terraform Init and Apply
+        run: |
+          terraform -chdir=environments/dev init
+          terraform -chdir=environments/dev apply -auto-approve
+
+      - name: Export Terraform outputs
+        run: terraform -chdir=environments/dev output -json > outputs.json
+
+      - name: Generate Ansible Inventory
+        run: |
+          mkdir -p ansible/playbooks
+          python3 ansible/scripts/generate_inventory.py outputs.json ansible/playbooks/hosts.ini
+
       - name: Install Ansible
         run: |
           sudo apt update
           sudo apt install -y ansible python3-pip
-
-      - name: Install Python dependencies
-        run: |
           pip3 install docker pymysql
 
       - name: Configure SSH
@@ -29,9 +44,6 @@ jobs:
           echo "${{ secrets.SSH_PRIVATE_KEY }}" > ~/.ssh/id_rsa
           chmod 600 ~/.ssh/id_rsa
           ssh-keyscan -H github.com >> ~/.ssh/known_hosts
-
-      - name: Skip dynamic inventory generation
-        run: echo "Using static Ansible inventory: ansible/playbooks/hosts.ini"
 
       - name: Run MySQL Playbook
         run: ansible-playbook -i ansible/playbooks/hosts.ini ansible/playbooks/mysql-docker.yml
