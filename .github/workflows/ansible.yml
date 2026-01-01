@@ -49,3 +49,6 @@ jobs:
       - name: Run Load Balancer
         run: |
           ansible-playbook -i ansible/playbooks/hosts.ini ansible/playbooks/loadbalancer.yml
+
+
+          ansible-playbook -i playbooks/hosts.ini playbooks/nodejs.yml
